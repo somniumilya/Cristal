@@ -1,0 +1,153 @@
+===============================================================================
+               DOCUMENTACIÓN TÉCNICA DETALLADA - APP.PY
+       Visualización 3D Interactiva de Sistemas Cristalinos en Streamlit
+===============================================================================
+
+1. ARQUITECTURA Y PROPÓSITO DEL SCRIPT
+-------------------------------------------------------------------------------
+El archivo 'app.py' es una aplicación web desarrollada con Streamlit y Plotly.
+Su objetivo principal es calcular la geometría tridimensional de los 7 sistemas
+cristalinos de la materia (Cúbico, Tetragonal, Ortorrómbico, Monoclínico, 
+Triclínico, Hexagonal y Romboédrico) a partir de sus parámetros de red (longitudes
+de ejes a, b, c y ángulos α, β, γ) y renderizarlos en un dashboard 3D interactivo.
+
+
+2. ANÁLISIS MÓDULO POR MÓDULO
+
+-------------------------------------------------------------------------------
+2.1. IMPORTACIÓN DE LIBRERÍAS
+-------------------------------------------------------------------------------
+- import streamlit as st:
+  Proporciona la infraestructura web para renderizar la interfaz de usuario, 
+  gestionar el diseño de la página e incrustar componentes gráficos.
+
+- import numpy as np:
+  Utilizado para operaciones con vectores tridimensionales, matrices, 
+  conversiones trigonométricas (grados a radianes) y cálculo de raíces cuadradas.
+
+- import matplotlib.colors as mcolors:
+  Proporciona acceso a paletas de colores estandarizadas (en este caso, 
+  TABLEAU_COLORS) para asignar un color distintivo a cada sistema cristalino.
+
+- import plotly.graph_objects as go:
+  Librería de renderizado gráfico interactivo. Proporciona los objetos 3D 
+  Scatter3d para dibujar tanto los vértices (puntos) como las aristas (líneas).
+
+- from plotly.subplots import make_subplots:
+  Permite construir una rejilla (grid) de subgráficos 3D dentro del mismo lienzo
+  de Plotly, facilitando la comparación lado a lado de las 7 estructuras.
+
+
+-------------------------------------------------------------------------------
+2.2. CONFIGURACIÓN DE LA PÁGINA STREAMLIT
+-------------------------------------------------------------------------------
+- st.set_page_config(page_title="Sistemas Cristalinos 3D", layout="wide"):
+  Ajusta el título de la pestaña del navegador y fuerza el modo de pantalla ancha
+  ("wide"), permitiendo que los subgráficos 3D aprovechen todo el ancho del monitor.
+
+- st.title(...) / st.write(...):
+  Renderiza el encabezado principal en formato HTML/Markdown y la bajada
+  descriptiva para el usuario.
+
+
+-------------------------------------------------------------------------------
+2.3. CLASE MÁSTER: SistemaCristalino
+-------------------------------------------------------------------------------
+Representa la abstracción matemática de una celda unitaria.
+
+• Atributos de Instancia (__init__):
+  - self.nombre: Nombre del sistema (ej. "Cúbico").
+  - self.parametros: Lista [a, b, c, alpha, beta, gamma].
+  - self.simbolo: Identificador corto del sistema (ej. "c", "t", "h").
+  - self.ejes_descripcion: Cadena descriptiva de las relaciones angulares y axiales.
+  - self.color: Almacena el código HEX/RGB asignado posteriormente.
+  - self.puntos, self.aristas: Almacenan la geometría calculada mediante el 
+    método generar_geometria().
+
+• Método: generar_geometria(self):
+  Contiene la lógica de transformación de parámetros de red a coordenadas 
+  cartesianas (X, Y, Z).
+
+  A) CASO ESPECIAL - SISTEMA HEXAGONAL:
+     En lugar de representar 1/3 de la celda (paralelepípedo inclinado), genera el
+     prisma hexagonal completo de 12 vértices.
+     1. Usa np.linspace(0, 2*np.pi, 7)[:-1] para obtener 6 ángulos a 60° (π/3).
+     2. Calcula los 6 vértices de la base inferior (z = 0) usando x = a*cos(θ), y = a*sin(θ).
+     3. Calcula los 6 vértices de la base superior (z = c).
+     4. Une las bases mediante np.vstack.
+     5. Define las aristas:
+        - 6 líneas para el anillo inferior: (i, (i+1)%6)
+        - 6 líneas para el anillo superior: (i+6, ((i+1)%6)+6)
+        - 6 columnas verticales: (i, i+6)
+
+  B) CASO GENERAL - CELDAS PARALELEPÍPEDAS (8 VÉRTICES):
+     Transforma la celda unitaria arbitraria definida por (a, b, c, α, β, γ) a 
+     un sistema de coordenadas cartesianas ortogonales (X, Y, Z):
+     
+     1. Convierte ángulos a radianes: np.radians().
+     2. Vector a (v1): Orientado a lo largo del eje X.
+        v1 = [a, 0, 0]
+     3. Vector b (v2): Situado en el plano XY con ángulo γ respecto a v1.
+        v2 = [b * cos(γ), b * sin(γ), 0]
+     4. Vector c (v3): Orientado en el espacio 3D con ángulos α respecto a v2 y β respecto a v1.
+        v3 = [ c*cos(β), 
+               c*(cos(α) - cos(β)*cos(γ)) / sin(γ), 
+               c*sqrt(max(0, 1 - cos²(α) - cos²(β) - cos²(γ) + 2*cos(α)*cos(β)*cos(γ))) / sin(γ) ]
+        *Nota: Se incluye max(0, ...) dentro de la raíz para evitar errores de precisión 
+               de coma flotante (NaN) en combinaciones extremas de ángulos.
+     5. Vértices: Se generan las 8 esquinas evaluando las combinaciones lineales:
+        V = i*v1 + j*v2 + k*v3  para  i, j, k ∈ {0, 1}.
+     6. Aristas: Lista fija de 12 pares de índices que definen las conexiones de 
+        las 12 caras del paralelepípedo.
+
+
+-------------------------------------------------------------------------------
+2.4. DEFINICIÓN DE DATOS (DICCIONARIO SISTEMAS)
+-------------------------------------------------------------------------------
+Instancia las 7 estructuras reales con proporciones escaladas para una óptima
+visualización en pantalla:
+
+1. Cúbico:        a=1.0, b=1.0, c=1.0 | α=90°, β=90°, γ=90°
+2. Tetragonal:    a=1.2, b=1.2, c=2.0 | α=90°, β=90°, γ=90°
+3. Ortorrómbico:  a=1.0, b=1.5, c=2.0 | α=90°, β=90°, γ=90°
+4. Monoclínico:   a=1.2, b=1.0, c=1.8 | α=90°, β=115°, γ=90°
+5. Triclínico:    a=1.0, b=1.3, c=1.7 | α=75°, β=100°, γ=110°
+6. Hexagonal:     a=1.2, b=1.2, c=2.0 | α=90°, β=90°, γ=120°
+7. Romboédrico:   a=1.2, b=1.2, c=1.2 | α=80°, β=80°, γ=80°
+
+Asignación Dinámica de Colores:
+Recorre el diccionario asignando de forma cíclica los colores de Tableau 
+(mcolors.TABLEAU_COLORS) a la propiedad 'color' de cada objeto.
+
+
+-------------------------------------------------------------------------------
+2.5. CONSTRUCCIÓN Y RENDERIZADO DEL DASHBOARD PLOTLY
+-------------------------------------------------------------------------------
+- make_subplots(rows=2, cols=4, specs=...):
+  Crea una matriz de 2 filas por 4 columnas.
+  El argumento specs define cada una de las 8 celdas de la cuadrícula con el 
+  tipo 'scene', lo que le indica a Plotly que debe inicializar un entorno 3D WebGL 
+  en cada cuadro (la casilla 8 queda vacía por haber 7 sistemas).
+
+- Bucle de Dibujo (for i, (nombre, sistema)...):
+  1. Calcula la posición en la matriz: 
+     row = (i - 1) // 4 + 1
+     col = (i - 1) % 4 + 1
+  2. Dibujo de Aristas (Lineas):
+     Itera sobre la lista de aristas de cada sistema agregando trazados 
+     go.Scatter3d en modo 'lines'. Define el grosor en 4px y asigna el color 
+     correspondiente al sistema.
+  3. Dibujo de Vértices (Puntos):
+     Agrega un trazado go.Scatter3d en modo 'markers' enviando las coordenadas 
+     de todos los vértices a la vez. Define el tamaño de esfera en 5px.
+
+- Configuración Final del Lienzo (fig.update_layout):
+  - height=800: Establece una altura fija de 800 píxeles.
+  - showlegend=False: Oculta la leyenda lateral para maximizar el espacio de dibujo.
+  - margin: Minimiza los márgenes externos (l=10, r=10, t=40, b=10).
+
+- Despliegue en Streamlit (st.plotly_chart):
+  Envía el objeto figura al cliente web. El parámetro use_container_width=True 
+  garantiza que la cuadrícula se reajuste automáticamente según el tamaño 
+  de la ventana del navegador.
+===============================================================================
